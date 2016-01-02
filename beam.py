@@ -1,59 +1,98 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import matplotlib.pyplot as plt  # noqa
-from matplotlib import cm  # noqa
-
+from matplotlib import pyplot as plt
 import numpy as np
 
 
 def symmetric_matrix(elements):
-    """ """
+    """
+    Build a symmetric square matrix from its
+    upper diagonal elements passed as a flat list:
+    [[1, 2, 3],
+     [ , 4, 5],  =>  [1, 2, 3, 4, 5, 6]
+     [ ,  , 6]]
+
+    >>> symmetric_matrix([1, 2, 3, 4, 5, 6])
+    [[1, 2, 3],
+     [2, 4, 5],
+     [3, 5, 6]]
+    """
+
     n = len(elements)
     N = int((-1 + np.sqrt(1 + 9 * n)) / 2)
     if n != (N + 1) * N / 2:
         raise Exception()
+
     triangular = np.zeros((N, N))
     triangular[np.triu_indices(N)] = np.array(elements)
+
     return triangular + np.triu(triangular, 1).T
 
 
 class BasicBeam(object):
-    """ """
+    """
+    This class doesn't implement any particular case.
+    BasicBeam integrates common methods and properties of:
+        AxialBeam
+        BendingBeam
+        TwistingBeam
+    Property methods 'K_e' and 'M_e' are intentionally not implemented.
+    """
 
-    def __init__(self, length, section, material, nodes=10):
+    def __init__(self, length, section, material, BCs=[], nodes=10):
+        """
+        Use coherent unit system for length, section and material.
+        """
+
         self.length = length
         self.section = section
         self.material = material
         self.nodes = nodes
-        self.BCs = []
+        self.BCs = BCs
 
     @property
-    def element_K(self):
-        """ K: Stiffness Matrix """
+    def K_e(self):
+        """
+        [[K_e]]: Element Stiffness Matrix
+        This method needs to be implemented by
+        classes that inherit from BasicBeam
+        """
+
         raise NotImplementedError()
 
     @property
-    def element_M(self):
-        """ M: Mass Matrix """
+    def M_e(self):
+        """
+        [[M_e]]: Element Mass Matrix
+        This method needs to be implemented by
+        classes that inherit from BasicBeam
+        """
+
         raise NotImplementedError()
 
     @property
-    def full_K(self):
-        """ K: Stiffness Matrix """
-        element = self.element_K
+    def K(self):
+        """
+        [[K]]: Beam Stiffness Matrix
+        """
+
+        element = self.K_e
         return self.assemble_matrices([element for _ in range(self.nodes)])
 
     @property
-    def full_M(self):
-        """ M: Mass Matrix """
-        element = self.element_M
+    def M(self):
+        """
+        [[M]]: Beam Mass Matrix
+        """
+
+        element = self.M_e
         return self.assemble_matrices([element for _ in range(self.nodes)])
 
     @staticmethod
     def assemble_matrices(matrices):
         """
-        Assemble all the elemental matrices to form a global matrix
+        Assemble all element matrices to create the beam full matrix
         Input:
             matrices: list of sqare matrices sharing shape (N, N)
         """
@@ -69,9 +108,14 @@ class BasicBeam(object):
 
         return full_matrix
 
-    def get_eig(self):
-        K = self.full_K
-        M_inverse = np.linalg.inv(self.full_M)
+    def get_modes(self):
+        """
+        Compute eigenvalues and eigenvectors and process them
+        to return them as natural frequencies and normal modes.
+        """
+
+        K = self.K
+        M_inverse = np.linalg.inv(self.M)
 
         # Build problem matrix
         problem_matrix = np.dot(M_inverse, K)
@@ -84,7 +128,7 @@ class BasicBeam(object):
         eigval, eigvec = np.linalg.eig(problem_matrix)
 
         # add missing values in eigenvectors (the ones affected by BCs)
-        BCs = [x-i for i, x in enumerate(BCs)]
+        BCs = [x - i for i, x in enumerate(BCs)]
         zeros = np.zeros((len(BCs), eigvec.shape[1]))
         eigvec = np.insert(eigvec, BCs, zeros, 0).T
 
@@ -92,84 +136,84 @@ class BasicBeam(object):
         for i, x in enumerate(eigvec):
             eigvec[i] = -1 * x if x[-1] < 0 else x
 
-        eig = zip(eigval, eigvec)
+        modes = zip(eigval, eigvec)
 
-        # calculate frequency (eigenvalue is circular frequency squared)
-        eig = map(lambda x: (np.sqrt(x[0]) / (2 * np.pi), x[1]), eig)
+        # calculate frequency (eigenvalue is squared circular frequency)
+        modes = map(lambda x: (np.sqrt(x[0]) / (2 * np.pi), x[1]), modes)
 
         # Order by ascending frequency
-        eig.sort(key=lambda x: x[0])
+        modes.sort(key=lambda x: x[0])
 
-        return eig
+        return modes
+
+
+class AxialBeam(BasicBeam):
+    """
+    This class solves the 1D beam axial case.
+    Shape functions for this case are linear:
+        f1(x) = 1 - x
+        f2(x) = x
+        x defined in [0, 1]
+        f1'(x) = -1
+        f2'(x) = 1
+    """
+
+    @property
+    def K_e(self):
+        """
+        E * A / L_e * [[ 1, -1],
+                      [-1,  1]]
+        """
+
+        L_e = self.length / (self.nodes - 1.)
+        E = self.material.E
+        A = self.section.A
+        triu = [1, -1, 1]
+
+        return E * A / L_e * symmetric_matrix(triu)
+
+    @property
+    def M_e(self):
+        """
+        rho * A * L_e / 6 * [[2, 1],
+                            [1, 2]]
+        """
+
+        L_e = self.length / (self.nodes - 1.)
+        A = self.section.A
+        rho = self.material.rho
+        triu = [2, 1, 2]
+
+        return A * rho * L_e / 6 * symmetric_matrix(triu)
 
 
 class BendingBeam(BasicBeam):
     """ """
 
     @property
-    def element_K(self):
+    def K_e(self):
         """ """
-        L = self.length / (self.nodes - 1.)
+        L_e = self.length / (self.nodes - 1.)
         E = self.material.E
         I = self.section.Ix
         triu = [12, 6, -12, 6, 4, -6, 2, 12, -6, 4]
-        return E * I / L**3 * symmetric_matrix(triu)
+        return E * I / L_e**3 * symmetric_matrix(triu)
 
     @property
-    def element_M(self):
+    def M_e(self):
         """ """
-        L = self.length / (self.nodes - 1.)
+        L_e = self.length / (self.nodes - 1.)
         A = self.section.A
         rho = self.material.rho
         triu = [156, 22, 54, -13, 4, 13, -3, 156, -22, 4]
-        return A * rho * L / 420 * symmetric_matrix(triu)
-
-    @property
-    def cantilever_normal_frequencies(self):
-        """
-        cos(kn*L) * cosh(kn*L) = -1
-        cosh(kn*L) >= 1
-        cos(kn*L) changes sign every kn*L=pi
-        """
-
-        L, S, mat = self.length, self.section, self.material
-        A, Ix = S.A, S.Ix
-        E, rho = mat.E, mat.rho
-
-        def f(x):
-            return np.cos(x) * np.cosh(x) + 1
-        EPS = 1e-9
-
-        n = 0
-        margin = np.pi / 2
-
-        while True:
-            ref = (2 * n + 1) * np.pi / 2
-            x0, x1 = ref, ref + (-1)**n * margin
-            f0, f1 = f(x0), f(x1)
-            if (f0 > 0) == (f1 > 0):
-                raise Exception("Wrong guess :(")
-
-            while abs(x0 - x1) / x0 > EPS:
-                x2 = (x0 + x1) / 2
-                f2 = f(x2)
-                if (f2 > 0) == (f0 > 0):
-                    x0, f0 = x2, f2
-                else:
-                    x1, f1 = x2, f2
-
-            x = (x0 + x1) / 2
-            margin = abs(ref - x)
-            n += 1
-
-            yield (x / L)**2 * np.sqrt(E * Ix / rho / A) / 2 / np.pi
+        return A * rho * L_e / 420 * symmetric_matrix(triu)
 
 
 class TwistingBeam(BasicBeam):
     """ """
 
     @property
-    def element_K(self):
+    def K_e(self):
         """ """
         L = self.length / (self.nodes - 1.)
         G = self.material.G
@@ -178,7 +222,7 @@ class TwistingBeam(BasicBeam):
         return G * J / L * symmetric_matrix(triu)
 
     @property
-    def element_M(self):
+    def M_e(self):
         """ """
         L = self.length / (self.nodes - 1.)
         Iy = self.section.Iy
@@ -187,7 +231,7 @@ class TwistingBeam(BasicBeam):
         return Iy * rho * L / 6 * symmetric_matrix(triu)
 
     @property
-    def cantilever_normal_frequencies(self):
+    def cantilever_natural_frequencies(self):
         S, mat = self.section, self.material
         L, J, Iy = self.length, S.J, S.Iy
         G, rho = mat.G, mat.rho
@@ -250,32 +294,6 @@ def test_eig(eig, N=None):
     plt.show()
 
 
-def plot_matrix(matrix):
-    plt.figure("full_K", figsize=(12, 10), dpi=200)
-    Kmax = np.max(np.abs(matrix))
-    N = matrix.shape[0]
-    plt.xlim = (0, N)
-    plt.ylim = (0, N)
-    im = plt.imshow(matrix,  # noqa
-                    interpolation='None',
-                    cmap=cm.bwr,
-                    extent=[0, N, 0, N],
-                    aspect=0.8,
-                    origin='upper',
-                    vmin=-Kmax,
-                    vmax=Kmax)
-    cb = plt.colorbar()
-    cb.set_label(r"$K$")
-
-    plt.tight_layout()  # = (0, N)
-    plt.axis("equal")
-    plt.title(r"Full Beam Stiffness Matrix $K$")
-    plt.xlabel(r"columns")
-    plt.ylabel(r"rows")
-    plt.grid()
-    plt.show()
-
-
 def test_things():
     eig = []
     A, B = 10, 101
@@ -284,7 +302,7 @@ def test_things():
         beam.BCs = [0, 1]
         eig.append(beam.get_eig())
     expected = []
-    for i, f in zip(range(6), beam.cantilever_normal_frequencies):
+    for i, f in zip(range(6), beam.cantilever_natural_frequencies):
         plt.plot(range(A, B), map(lambda x: abs(x[i][0] - f) / f * 100, eig))
         expected.append(f)
     plt.legend(["%.1f" % x for x in expected])
@@ -295,13 +313,13 @@ def test_things():
 
 def test_cantilever_bending():
     beam = test_bending_beam(10)
-    for i, f in zip(range(10), beam.cantilever_normal_frequencies):
+    for i, f in zip(range(10), beam.cantilever_natural_frequencies):
         print i, f
 
 
 def test_cantilever_twisting():
     beam = test_twisting_beam(10)
-    for i, f in zip(range(10), beam.cantilever_normal_frequencies):
+    for i, f in zip(range(10), beam.cantilever_natural_frequencies):
         print i, f
 
 
