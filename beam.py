@@ -132,14 +132,18 @@ class BasicBeam(object):
         zeros = np.zeros((len(BCs), eigvec.shape[1]))
         eigvec = np.insert(eigvec, BCs, zeros, 0).T
 
+        # degrees of freedom
+        dof = self.M_e.shape[0] / 2
+
         # make normal modes point upwards at the end of the beam
         for i, x in enumerate(eigvec):
-            eigvec[i] /= x[-1] if abs(x[-1]) > 1e-9 else 1
-
-        modes = zip(eigval, eigvec)
+            for j in range(dof):
+                eigvec[i][j::dof] /= x[-dof+j] if abs(x[-dof+j]) > 1e-9 else 1
 
         # calculate frequency (eigenvalue is squared circular frequency)
-        modes = map(lambda x: (np.sqrt(x[0]) / (2 * np.pi), x[1]), modes)
+        freqs = map(lambda x: np.sqrt(x) / (2 * np.pi), eigval)
+
+        modes = zip(freqs, eigvec)
 
         # Order by ascending frequency
         modes.sort(key=lambda x: x[0])

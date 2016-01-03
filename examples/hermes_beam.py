@@ -46,23 +46,23 @@ def subplot_modes(modes):
     # initiate plot
     fig, axarr = plt.subplots(n, sharex=True)
 
-    legend_kwargs = {'loc': 'center right', 'bbox_to_anchor': (1.3, 0.5)}
+    legend_kwargs = {'loc': 'center left', 'bbox_to_anchor': (1, 0.5)}
     for i, mode_container in enumerate(modes):
         print "\nMode {0}".format(i+1)
 
-        legend = map(lambda x: " ".join(x[0], "(f={0:.2f} Hz)".format(x[1])),
+        legend = map(lambda x: " ".join((x[0], "(f={0:.2f} Hz)".format(x[1]))),
                      mode_container)
         modes_i = map(lambda x: x[2], mode_container)
 
         for j, mode in enumerate(modes_i):
             x = np.linspace(0, L, len(mode))
-            axarr[i].plot(x, mode, style_gen[j])
+            axarr[i].plot(x, mode, style_gen(j))
         axarr[i].legend(legend, **legend_kwargs)
         axarr[i].grid()
 
     axarr[n-1].set_xlabel(r"Length of the beam ($y$ axis) in meters")
     axarr[n/2].set_ylabel("Normalized deflection")
-    plt.subplots_adjust(right=0.8)
+    plt.subplots_adjust(right=0.6)
 
 
 def plot_bending_modes(nodes, n=3):
