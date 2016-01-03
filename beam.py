@@ -134,7 +134,7 @@ class BasicBeam(object):
 
         # make normal modes point upwards at the end of the beam
         for i, x in enumerate(eigvec):
-            eigvec[i] = -1 * x if x[-1] < 0 else x
+            eigvec[i] /= x[-1] if abs(x[-1]) > 1e-9 else 1
 
         modes = zip(eigval, eigvec)
 

@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import fsolve
 
 
-def cantilever_axial_modes(beam, N=10):
+def cantilever_axial_modes(beam, N=10, points=100):
     """
     Natural frequencies come from solutions of:
         cos(kn*L) = 0
@@ -15,10 +15,13 @@ def cantilever_axial_modes(beam, N=10):
     Input:
         beam: Beam instance
         N: number of modes requested (defaults to 10)
+        points: number of points to discretize the mode
     Output:
         list of tuples containing:
             [0]: natural frequency
-            [1]: normal mode as a Numpy array of 100 elements
+            [1]: normal mode as a Numpy array of points. Shape: (points, 2)
+                first column: x coordinate
+                second column: f(x)
     """
 
     L = beam.length
@@ -26,19 +29,22 @@ def cantilever_axial_modes(beam, N=10):
 
     physical_constant = np.sqrt(mat.E / mat.rho)
 
+    x = np.linspace(0, L, points)
     modes = []
 
     for n in range(N):
         kn = (2 * n + 1) * np.pi / 2 / L
         freq = kn * physical_constant / (2 * np.pi)
-        mode = np.sin(kn * np.linspace(0, L, 100))
+        y = np.sin(kn * x)
 
-        modes.append((freq, mode / mode[-1]))
+        mode = np.vstack((x, y / y[-1])).T
+
+        modes.append((freq, mode))
 
     return modes
 
 
-def cantilever_bending_modes(beam, N=10, vertical='z', EPS=1e-9):
+def cantilever_bending_modes(beam, N=10, points=100, vertical='z', EPS=1e-9):
     """
     Natural frequencies come from solutions of:
         cos(kn * L) * cosh(kn * L) = -1
@@ -57,13 +63,16 @@ def cantilever_bending_modes(beam, N=10, vertical='z', EPS=1e-9):
     Input:
         beam: Beam instance
         N: number of modes requested (defaults to 10)
+        points: number of points to discretize the mode
         vertical: axis in which vertical displacements happen ('x' or 'z')
         EPS: maximum numerical relative error allowed for kn
 
     Output:
         list of bicomponent tuples with:
             [0]: natural frequency (in Hertzs)
-            [1]: normal mode as a Numpy array of 100 elements
+            [1]: normal mode as a Numpy array of points. Shape: (points, 2)
+                first column: x coordinate
+                second column: f(x)
     """
 
     L = beam.length
@@ -77,7 +86,7 @@ def cantilever_bending_modes(beam, N=10, vertical='z', EPS=1e-9):
 
     physical_constant = np.sqrt(mat.E * I / mat.rho / S.A)
 
-    y = np.linspace(0, L, 100)
+    x = np.linspace(0, L, points)
 
     def err(x):
         """ Function to minimize """
@@ -99,14 +108,16 @@ def cantilever_bending_modes(beam, N=10, vertical='z', EPS=1e-9):
 
         kn = knL / L
         freq = kn**2 * physical_constant / 2 / np.pi
-        mode = cantilever_fourth_order(y, kn, L)
+        y = cantilever_fourth_order(x, kn, L)
 
-        modes.append((freq, mode / mode[-1]))
+        mode = np.vstack((x, y / y[-1])).T
+
+        modes.append((freq, mode))
 
     return modes
 
 
-def cantilever_twisting_modes(beam, N=10):
+def cantilever_twisting_modes(beam, N=10, points=100):
     """
     Natural frequencies come from solutions of:
         cos(kn*L) = 0
@@ -119,10 +130,13 @@ def cantilever_twisting_modes(beam, N=10):
     Input:
         beam: Beam instance
         N: number of modes requested (defaults to 10)
+        points: number of points to discretize the mode
     Output:
         list of tuples containing:
             [0]: natural frequency
-            [1]: normal mode as a Numpy array of 100 elements
+            [1]: normal mode as a Numpy array of points. Shape: (points, 2)
+                first column: x coordinate
+                second column: f(x)
     """
 
     L = beam.length
@@ -136,9 +150,10 @@ def cantilever_twisting_modes(beam, N=10):
     for n in range(N):
         kn = (2 * n + 1) * np.pi / 2 / L
         freq = kn * physical_constant / (2 * np.pi)
-        mode = np.sin(kn * np.linspace(0, L, 100))
-
-        modes.append((freq, mode / mode[-1]))
+        x = np.linspace(0, L, points)
+        y = np.sin(kn * x)
+        mode = np.vstack((x, y / y[-1])).T
+        modes.append((freq, mode))
 
     return modes
 
