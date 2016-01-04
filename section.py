@@ -37,6 +37,7 @@ def plot_vectors(point, vectors, style="k-"):
     # ax.quiver(X, Y, U, V,
     #          angles='xy', scale_units='xy', scale=1)
     # ax.draw()
+    vectors = np.array(vectors)
     for vector in vectors:
         points = np.vstack((point, point + vector)).T
         plt.plot(points[0], points[1], style)
@@ -77,12 +78,53 @@ class Section(object):
         """ Class Constructor """
 
         self.lines = lines
+        self.calculate_ppal_axes()
 
-    def get_ppal_axes(self):
-        """ Get Inertia principal axes and values """
+    def __str__(self):
+        """
+        Main details of the section as a summary to be printed.
 
-        # Since I is a symmetric matrix, let's use eigh (h: Hermitian)
-        self.ppal_I, self.ppal_axes = np.linalg.eig(self.I)
+        This function is called when a section instance is casted to string
+        explicitely or implicitely:
+        >>> section_instance = Section(some_lines)
+        >>> print section_instance
+        >>> some_var = str(section_instance)
+        """
+        text = ["\nSection details:",
+                "Area, A = {obj.A} u^2",
+                "Inner area, S = {obj.S} u^2",
+                "Torsion constant, J = {obj.J} u^2",
+                "Center of Gravity, CG = {obj.cg}",
+                "Area moments of inertia in XZ axes at CG:",
+                "\tI_x = {obj.Ix} u^4",
+                "\tI_z = {obj.Iz} u^4",
+                "\tI_xz= {obj.Ixz} u^4",
+                "Principal area moments of inertia:",
+                "\tI_1 = {obj.I_1} u^4 at {obj.ppal_angle_deg} deg of OX",
+                "\tI_2 = {obj.I_2} u^4 at {obj.ppal_angle_deg} deg of OZ",
+                "Perpendicular moment of inertia through CG:",
+                "\tI_y = {obj.Iy} u^4 = I_x + I_z = I_1 + I_2"]
+
+        return "\n".join(text).format(obj=self)
+
+    def calculate_ppal_axes(self):
+        """
+        Calculate principal axes and area moments of inertia
+        """
+
+        # Since I is a symmetric matrix, eigh is used (h: Hermitian)
+        eigvals, eigvecs = np.linalg.eigh(self.I)
+
+        # Descending order, higher first
+        if eigvals[1] > eigvals[0]:
+            eigvecs = eigvecs[:, ::-1]
+            eigvals = eigvals[::-1]
+
+        self.I_1 = eigvals[0]
+        self.I_2 = eigvals[1]
+        vec = np.resize(eigvecs[:, 0], (2,))
+        self.ppal_angle = np.arcsin(np.cross([1, 0], vec) / np.linalg.norm(vec))
+        self.ppal_angle_deg = self.ppal_angle * 180 / np.pi
 
     def check_closed(self):
         """ Returns True if all segments which compose the section
@@ -125,22 +167,42 @@ class Section(object):
         # plot section.cg
         plot_point(self.cg, 'ro')
 
+        xbox = np.array(plt.xlim())
+        ybox = np.array(plt.ylim())
+        xmargin = np.abs(xbox - self.cg[0])
+        ymargin = np.abs(ybox - self.cg[1])
+        cos = np.cos(self.ppal_angle)
+        sin = np.sin(self.ppal_angle)
+        I_1_scale = np.hstack((xmargin / cos, ymargin / sin)) / self.I_1
+        I_2_scale = np.hstack((xmargin / sin, ymargin / cos)) / self.I_2
+        I_scale = np.min(np.abs(np.hstack((I_1_scale, I_2_scale)))) * 0.7
+
         # plot inertia principal axes
-        try:
-            self.ppal_axes
-        except:
-            self.get_ppal_axes()
-        max_abs_val = max([abs(x) for x in self.ppal_I])
-        scaled_ppal_I = self.ppal_I / max_abs_val
-        vec_arrays = np.asarray(self.ppal_axes.T)
-        vectors = [x * y for x, y in zip(vec_arrays, scaled_ppal_I)]
+        I_1 = self.I_1 * I_scale
+        I_2 = self.I_2 * I_scale
+        vectors = [I_1 * np.array([cos, sin]), I_2 * np.array([-sin, cos])]
         plot_vectors(self.cg, vectors, style='r-')
 
-        Ix = np.array([1, 0]) * self.I[0, 0] / max_abs_val
-        Iz = np.array([0, 1]) * self.I[1, 1] / max_abs_val
+        theta = np.linspace(0, 2*np.pi, 100)
+        I_ellipse = np.vstack(([I_1*np.cos(x), I_2*np.sin(x)] for x in theta))
+        I_ellipse = np.dot(I_ellipse, [[cos, sin], [-sin, cos]])
+        I_ellipse += np.dot(np.ones((100, 1)), self.cg.reshape((1, 2)))
+        I_ellipse = I_ellipse.T
+        plt.plot(I_ellipse[0], I_ellipse[1], 'r:')
+
+        # plot moments of inertia of local reference system at CG
+        Ix = np.array([1, 0]) * self.Ix * I_scale
+        Iz = np.array([0, 1]) * self.Iz * I_scale
         plot_vectors(self.cg, [Ix, Iz], 'k-')
 
-        return fig
+        # invert X axis
+        margin = np.array([-0.05, 0.05])
+        plt.xlim((xbox * (1 + margin))[::-1])
+        plt.ylim((ybox * (1 + margin)))
+
+        print plt.xlim(), plt.ylim()
+
+        return plt, fig
 
     @cached_property
     def A(self):
@@ -184,6 +246,10 @@ class Section(object):
     @property
     def Iz(self):
         return self.I[1, 1]
+
+    @property
+    def Ixz(self):
+        return self.I[0, 1]
 
     def errors(self, error_name, *args, **kwargs):
 
@@ -271,26 +337,3 @@ class ThickLine(object):
         self.deltas = np.diff(self.points, axis=0)
         self.delta_norms = np.linalg.norm(self.deltas, axis=1)
         self.areas = self.delta_norms * self.t
-
-
-if __name__ == "__main__":
-    theta = np.linspace(0, np.pi, 100)
-    points_a = np.array([[np.sin(x), np.cos(x)] for x in theta])
-    a = ThickLine(points_a, 0.03)
-    points_b = np.array([[x, -1] for x in np.linspace(0, 2, 50)])
-    b = ThickLine(points_b, 0.1)
-    points_c = np.array([[2, x] for x in np.linspace(-1, 1, 100)])
-    c = ThickLine(points_c, 0.05)
-    points_d = np.array([[x, 1] for x in np.linspace(2, 0, 50)])
-    d = ThickLine(points_d, 0.01)
-
-    section = Section(lines=[a, b, c, d])
-
-    plt.figure()
-    section.plot()
-
-    plt.axis("equal")
-    plt.ylim(np.array(plt.ylim()) * 1.1)
-    plt.show()
-
-    print("Section Inner Surface: {0} u^2".format(section.S))
