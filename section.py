@@ -169,13 +169,11 @@ class Section(object):
 
         xbox = np.array(plt.xlim())
         ybox = np.array(plt.ylim())
-        xmargin = np.abs(xbox - self.cg[0])
-        ymargin = np.abs(ybox - self.cg[1])
+        xmargin = xbox - self.cg[0]
+        ymargin = ybox - self.cg[1]
         cos = np.cos(self.ppal_angle)
         sin = np.sin(self.ppal_angle)
-        I_1_scale = np.hstack((xmargin / cos, ymargin / sin)) / self.I_1
-        I_2_scale = np.hstack((xmargin / sin, ymargin / cos)) / self.I_2
-        I_scale = np.min(np.abs(np.hstack((I_1_scale, I_2_scale)))) * 0.7
+        I_scale = np.min(np.abs(np.hstack((xmargin, ymargin)))) / self.I_1
 
         # plot inertia principal axes
         I_1 = self.I_1 * I_scale
