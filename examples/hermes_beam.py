@@ -4,7 +4,9 @@
 import os
 import sys
 
-import matplotlib.pyplot as plt
+from matplotlib import pyplot as plt
+from matplotlib import rc
+
 import numpy as np
 
 sys.path.append(os.path.abspath("../"))  # noqa
@@ -26,7 +28,7 @@ bending_beam = BendingBeam(L, S, mat)
 
 
 def style_gen(token, color=0, line=0):
-    colors = 'krgb'
+    colors = 'brkgmc'
     tokens = 'o.+vds*'
     lines = ['-', '-.', '--', ':']
     color = colors[color % len(colors)]
@@ -46,6 +48,9 @@ def subplot_modes(modes):
     # initiate plot
     fig, axarr = plt.subplots(n, sharex=True)
 
+    rc('font', **{'family': 'sans-serif',
+                  'sans-serif': ['Computer Modern Roman']})
+    # rc('text', usetex=True)
     legend_kwargs = {'loc': 'center left', 'bbox_to_anchor': (1, 0.5)}
     for i, mode_container in enumerate(modes):
         print "\nMode {0}".format(i+1)
@@ -56,12 +61,12 @@ def subplot_modes(modes):
 
         for j, mode in enumerate(modes_i):
             x = np.linspace(0, L, len(mode))
-            axarr[i].plot(x, mode, style_gen(j))
+            axarr[i].plot(x, mode, style_gen(j, j))
         axarr[i].legend(legend, **legend_kwargs)
         axarr[i].grid()
 
     axarr[n-1].set_xlabel(r"Length of the beam ($y$ axis) in meters")
-    axarr[n/2].set_ylabel("Normalized deflection")
+    axarr[n/2].set_ylabel(r"Normalized deflection")
     plt.subplots_adjust(right=0.6)
 
 
@@ -159,15 +164,15 @@ def plot_twisting_errors(nodes, n=3):
 if __name__ == "__main__":
     nodes = [8, 20]
     n = 6
-    legend = ["N = {0}".format(i) for i in nodes] + ["analytic"]
+    legend = [r"N = {0}".format(i) for i in nodes] + [r"analytic"]
     bending_beam_8 = BendingBeam(L, S, mat, BCs=[0, 1], nodes=8)
     bending_beam_20 = BendingBeam(L, S, mat, BCs=[0, 1], nodes=20)
-    bending_modes_8 = map(lambda x: ("N = 8", x[0], x[1][::2]),
+    bending_modes_8 = map(lambda x: (r"N = 8", x[0], x[1][::2]),
                           bending_beam_8.get_modes()[:n])
-    bending_modes_20 = map(lambda x: ("N = 20", x[0], x[1][::2]),
+    bending_modes_20 = map(lambda x: (r"N = 20", x[0], x[1][::2]),
                            bending_beam_20.get_modes()[:n])
     bending_modes = cantilever_bending_modes(bending_beam_8, n)
-    bending_modes = map(lambda x: ("analytic", x[0], x[1].T[1]),
+    bending_modes = map(lambda x: (r"analytic", x[0], x[1].T[1]),
                         bending_modes)
 
     subplot_modes(zip(bending_modes_8, bending_modes_20, bending_modes))
